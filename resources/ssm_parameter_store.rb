@@ -23,6 +23,7 @@ property :aws_role_session_name, String
 property :region, String, default: lazy { fallback_region }
 
 include AwsCookbook::Ec2 # needed for aws_region helper
+include Chef::Mixin::DeepMerge
 
 # allow use of the property names from the parameter store cookbook
 alias_method :aws_access_key_id, :aws_access_key
@@ -71,6 +72,27 @@ action :get_parameters_by_path do
   end
   Chef::Log.debug "Get parameters by path #{path}"
   node.run_state[new_resource.return_keys] = secret_info
+end
+
+action :get_parameters_by_path_v2 do
+  Chef::Log.debug "Get parameters by path #{path}"
+  # => Build the Request
+  request = {
+    path: path,
+    recursive: recursive,
+    parameter_filters: parameter_filters,
+    with_decryption: with_decryption,
+    max_results: max_results,
+    next_token: next_token,
+  }
+
+  resp = ssm_client.get_parameters_by_path(request)
+  resp.parameters.each do |parm|
+    # => Convert the Param to a Hash
+    hsh = param_to_hash(parm.name, parm.value)
+    # => Merge the resulting Hash into the Destination
+    deep_merge!(hsh, node.run_state[new_resource.return_key] ||={})
+  end
 end
 
 action :create do
@@ -154,6 +176,13 @@ action_class do
 
   def max_results
     @max_results ||= new_resource.max_results
+  end
+
+  def param_to_hash(path, value)
+    # => Recursively descend a ParameterStore Path and build a Hash
+    #  INPUT: '/Ensure/This/Path' = 'Exists'
+    # OUTPUT: ['Ensure']['This']['Path'] => 'Exists'
+    path.split('/').reject(&:empty?).reverse.inject(value) { |h, s| {s => h } }
   end
 
   def write_parameter

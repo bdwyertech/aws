@@ -78,6 +78,30 @@ aws_ssm_parameter_store 'getParametersbypath' do
   aws_secret_access_key node['aws_test']['access_key']
 end
 
+aws_ssm_parameter_store 'getParametersbypath' do
+  path '/pathtest/'
+  recursive true
+  with_decryption true
+  return_key 'path_values_v2'
+  action :get_parameters_by_path_v2
+  aws_access_key node['aws_test']['key_id']
+  aws_secret_access_key node['aws_test']['access_key']
+end
+
+file '/tmp/test_params_v2' do
+  content(
+    lazy { node.run_state['path_values_v2'].inspect }
+  )
+  action :create
+end
+
+ruby_block 'test_params_v2' do
+  block do
+    Chef::Log.warn Chef::JSONCompat.to_json_pretty(node.run_state['path_values_v2'])
+  end
+  action :run
+end
+
 aws_ssm_parameter_store 'get clear_value' do
   name '/testkitchen/ClearTextString'
   return_key 'clear_value'
